@@ -4,9 +4,11 @@ CREATE PROCEDURE partitionClusteredTable
 @columnstore    BINARY
 AS
 BEGIN
-
+    DECLARE @errorMessage NVARCHAR(500);
+    
     IF  @table IS NULL OR @filegroup IS NULL
-        RAISERROR('Please pass Arguments for @table and @filegroup.', 16, 1);
+        SET @errorMessage = 'Please pass Arguments for @table and @filegroup.';
+        RAISERROR(@errorMessage, 16, 1);
 
     
     BEGIN TRY
@@ -73,32 +75,44 @@ BEGIN
             /* Checking Deletiion of Keys */
             select  *  
             from    sys.foreign_keys            -- Sys Tabelle mit Foreign Keys         
-            where   referenced_object_id = 21575115
+            where   referenced_object_id = @table
 
 
-            /******************************************/
-            /*  Let the Clustered Index do its Magic  */
-            /******************************************/
+            /*********************************************************************/
+            /*  Store Name & Columname of the Existing Primary Key in Variables  */
+            /*********************************************************************/
             DECLARE @primaryKey_name        NVARCHAR(200),
                     @primaryKey_column      NVARCHAR(200),
                     @executableStatement    NVARCHAR(800);
 
             SET @primaryKey_name =  (   SELECT  "name"  
                                         FROM    sys.key_constraints  
-                                        WHERE   type = 'PK' AND OBJECT_NAME(parent_object_id) = @table  )
+                                        WHERE   type = 'PK' AND OBJECT_NAME(parent_object_id) = @table  );
 
-    /* 
-            ALTER TABLE @table
-            DROP CONSTRAINT @primaryKey
+            SET @primaryKey_column =  ( SELECT  "name"  
+                                        FROM    sys.key_constraints  
+                                        WHERE   type = 'PK' AND OBJECT_NAME(parent_object_id) = @table  );
+            
+
+            /***********************************/
+            /*  Drop the Existing Primary Key  */
+            /***********************************/
+            SET @executableStatement =  CONCAT( 'ALTER TABLE ', @table,
+                                                'DROP CONSTRAINT ',@primaryKey_name    );
+            EXEC sp_executesql @executableStatement;
 
 
-            CREATE CLUSTERED INDEX CIX+@primaryKey_name ON @table(@primaryKey_column) 
-            ON  PartFunktion(Column)?? FILEGROUP
-
-            ALTER TABLE @table
-            ADD CONSTRAINT @primaryKey_name PRIMARY KEY CLUSTERED (@primaryKey_column)
-
-     */
+            /******************************************/
+            /*  Let the Clustered Index do its Magic  */
+            /******************************************/
+            SET @executableStatement =  CONCAT( 'CREATE CLUSTERED INDEX CIX_', @primaryKey_name, 
+                                                ' ON ', @table, '(', @primaryKey_column, ')
+                                                 ON ', @filegroup   );
+            EXEC sp_executesql @executableStatement; 
+            
+            SET @executableStatement =  CONCAT( 'ALTER TABLE ', @table, 
+                                                'ADD CONSTRAINT ', @primaryKey_name, ' PRIMARY KEY NONCLUSTERED (', @primaryKey_column, ')'   );
+            EXEC sp_executesql @executableStatement; 
 
 
             /****************************************************/
@@ -137,12 +151,14 @@ BEGIN
             /* Checking Restorment of Keys */
             select *  
             from sys.foreign_keys            -- Sys Tabelle mit Foreign Keys         
-            where referenced_object_id = 21575115;
+            where referenced_object_id = @table;
         END TRY
         BEGIN CATCH
-            /* CATCH SCHREIBEN !!! */
+            ROLLBACK TRANSACTION ProzTransaction;
+            SET @errorMessage = CONCAT( 'The error with error number ', ERROR_NUMBER(), 'ocurred. Please note the following Message: ', ERROR_MESSAGE());
+            RAISERROR(@errorMessage, 16, 1);    
         END CATCH;
-    ROLLBACK TRANSACTION ProzTransaction;
+    COMMIT TRANSACTION ProzTransaction;
 END
 
 

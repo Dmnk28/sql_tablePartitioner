@@ -1,0 +1,1 @@
+EXECUTE partitionClusteredTable @table='Orders' @filegroup=''
