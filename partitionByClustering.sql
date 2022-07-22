@@ -1,15 +1,16 @@
-CREATE PROCEDURE partitionClusteredTable 
+ALTER PROCEDURE partitionClusteredTable 
 @table          NVARCHAR(250)   =   null,
 @filegroup      NVARCHAR(250)   =   null,
-@columnstore    BINARY
+@columnstore    BINARY          =   NULL
 AS
 BEGIN
     DECLARE @errorMessage NVARCHAR(500);
     
     IF  @table IS NULL OR @filegroup IS NULL
-        SET @errorMessage = 'Please pass Arguments for @table and @filegroup.';
-        RAISERROR(@errorMessage, 16, 1);
-
+        BEGIN
+            SET @errorMessage = 'Please pass Arguments for @table and @filegroup.';
+            RAISERROR(@errorMessage, 16, 1);
+        END
     
     BEGIN TRY
         BEGIN TRANSACTION ProzTransaction
@@ -19,22 +20,18 @@ BEGIN
             SELECT  "name" AS constraint_name,
                 (   SELECT "name"
                     FROM    sys.objects
-                    WHERE   object_id = FKC.parent_object_id
-                ) as parent_table_name,
+                    WHERE   object_id = FKC.parent_object_id    ) as parent_table_name,
                 (   SELECT "name"
                     FROM    sys.columns
                     WHERE   object_id = FKC.parent_object_id
-                    AND     sys.columns.column_id = FKC.parent_column_id
-                ) as parent_table_column_name,
+                    AND     sys.columns.column_id = FKC.parent_column_id    ) as parent_table_column_name,
                 (   SELECT "name"
                     FROM    sys.objects
-                    WHERE   object_id = FKC.referenced_object_id
-                ) as referenced_table_name,
+                    WHERE   object_id = FKC.referenced_object_id    ) as referenced_table_name,
                 (   SELECT "name"
                     FROM    sys.columns
                     WHERE   object_id = FKC.referenced_object_id
-                    AND     sys.columns.column_id = FKC.referenced_column_id
-                ) as referenced_column_name
+                    AND     sys.columns.column_id = FKC.referenced_column_id    ) as referenced_column_name
             INTO    #tableFKeys
             FROM    sys.foreign_keys AS FK                                  -- System table with Foreign Keys         
             JOIN    sys.foreign_key_columns AS FKC                          -- System table with Foreign Key Columns
@@ -62,7 +59,7 @@ BEGIN
             WHILE @@fetch_status=0
             BEGIN        
         	    SET @drop_statement     =   concat('ALTER TABLE "', @tbl_name, '"',         -- '"' Granting correct usage of Tablenames with spaces, hyphens, etc.  
-                                            'DROP CONSTRAINT "',  @cons_name, '";');
+                                            'DROP CONSTRAINT ',  @cons_name, ';');
 
         	    EXEC sp_executesql @drop_statement; 
 
@@ -75,7 +72,7 @@ BEGIN
             /* Checking Deletiion of Keys */
             select  *  
             from    sys.foreign_keys            -- Sys Tabelle mit Foreign Keys         
-            where   referenced_object_id = @table
+            where "name" = @table;
 
 
             /*********************************************************************/
@@ -87,18 +84,36 @@ BEGIN
 
             SET @primaryKey_name =  (   SELECT  "name"  
                                         FROM    sys.key_constraints  
-                                        WHERE   type = 'PK' AND OBJECT_NAME(parent_object_id) = @table  );
+                                        WHERE   type = 'PK' AND parent_object_id = (    SELECT  object_id
+                                                                                        FROM    sys.objects
+                                                                                        WHERE   "name" = @table )  
+                                    );
 
-            SET @primaryKey_column =  ( SELECT  "name"  
-                                        FROM    sys.key_constraints  
-                                        WHERE   type = 'PK' AND OBJECT_NAME(parent_object_id) = @table  );
+            SET @primaryKey_column =    (   select  COL."name" as column_name
+                                            from    sys.tables TAB
+                                                inner join  sys.indexes PK
+                                                    on      TAB.object_id = PK.object_id 
+                                                    and     PK.is_primary_key = 1
+                                                inner join  sys.index_columns IC
+                                                    on      IC.object_id = PK.object_id
+                                                    and     IC.index_id = PK.index_id
+                                                inner join  sys.columns COL
+                                                    on      PK.object_id = COL.object_id
+                                                    and     COL.column_id = IC.column_id
+                                            WHERE   TAB."name" = @table
+                                        );
             
+
+            /* SELECT "name"
+                    FROM    sys.columns
+                    WHERE   object_id = FKC.referenced_object_id
+                    AND     sys.columns.column_id = FKC.referenced_column_id  */
 
             /***********************************/
             /*  Drop the Existing Primary Key  */
             /***********************************/
             SET @executableStatement =  CONCAT( 'ALTER TABLE ', @table,
-                                                'DROP CONSTRAINT ',@primaryKey_name    );
+                                                ' DROP CONSTRAINT ',@primaryKey_name    );
             EXEC sp_executesql @executableStatement;
 
 
@@ -106,12 +121,12 @@ BEGIN
             /*  Let the Clustered Index do its Magic  */
             /******************************************/
             SET @executableStatement =  CONCAT( 'CREATE CLUSTERED INDEX CIX_', @primaryKey_name, 
-                                                ' ON ', @table, '(', @primaryKey_column, ')
+                                                ' ON "', @table, '"(', @primaryKey_column, ')
                                                  ON ', @filegroup   );
             EXEC sp_executesql @executableStatement; 
             
-            SET @executableStatement =  CONCAT( 'ALTER TABLE ', @table, 
-                                                'ADD CONSTRAINT ', @primaryKey_name, ' PRIMARY KEY NONCLUSTERED (', @primaryKey_column, ')'   );
+            SET @executableStatement =  CONCAT( 'ALTER TABLE "', @table, '" 
+                                                 ADD CONSTRAINT "', @primaryKey_name, '" PRIMARY KEY NONCLUSTERED (', @primaryKey_column, ')'   );
             EXEC sp_executesql @executableStatement; 
 
 
@@ -133,7 +148,7 @@ BEGIN
             WHILE @@fetch_status=0
             BEGIN
         	SET @add_statement     =    concat( 'ALTER TABLE "', @addTbl_name, '" ',         
-                                                'ADD CONSTRAINT [',  @addCons_name, '] FOREIGN KEY (',  @cons_col, ') REFERENCES [Orders','] (', @ref_col,');');       -- orders has to be replaced by the @table-parameter of the procedure later
+                                                'ADD CONSTRAINT "',  @addCons_name, '" FOREIGN KEY (',  @cons_col, ') REFERENCES "', @table,'" (', @ref_col,');');       
 
         	EXEC sp_executesql @add_statement; 
 
@@ -151,14 +166,16 @@ BEGIN
             /* Checking Restorment of Keys */
             select *  
             from sys.foreign_keys            -- Sys Tabelle mit Foreign Keys         
-            where referenced_object_id = @table;
+            where "name" = @table;
+
+            COMMIT TRANSACTION ProzTransaction;
         END TRY
         BEGIN CATCH
             ROLLBACK TRANSACTION ProzTransaction;
-            SET @errorMessage = CONCAT( 'The error with error number ', ERROR_NUMBER(), 'ocurred. Please note the following Message: ', ERROR_MESSAGE());
+            SET @errorMessage = CONCAT( 'The error with error number ', ERROR_NUMBER(), ' ocurred in Line ', ERROR_LINE(), '. Please note the following Message: ', ERROR_MESSAGE());
             RAISERROR(@errorMessage, 16, 1);    
         END CATCH;
-    COMMIT TRANSACTION ProzTransaction;
+    
 END
 
 
