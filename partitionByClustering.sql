@@ -9,7 +9,7 @@ BEGIN
     IF  @table IS NULL OR @filegroup IS NULL
         BEGIN
             SET @errorMessage = 'Please pass Arguments for @table and @filegroup.';
-            RAISERROR(@errorMessage, 16, 1);
+            RAISERROR(@errorMessage, 17, 1);
         END
     
     BEGIN TRY
@@ -32,7 +32,7 @@ BEGIN
                     FROM    sys.columns
                     WHERE   object_id = FKC.referenced_object_id
                     AND     sys.columns.column_id = FKC.referenced_column_id    ) as referenced_column_name
-            INTO    #tableFKeys
+            INTO    #foreign_keys_to_moving_table
             FROM    sys.foreign_keys AS FK                                  -- System table with Foreign Keys         
             JOIN    sys.foreign_key_columns AS FKC                          -- System table with Foreign Key Columns
             ON      FK.object_id = FKC.constraint_object_id         
@@ -42,13 +42,13 @@ BEGIN
 
             /* Check whether there are constraints in the temporary table */
             SELECT  *
-            FROM    #tableFKeys
+            FROM    #foreign_keys_to_moving_table
 
             /*****************************/
             /*  Drop all Foreign Keys    */
             /*****************************/
             DECLARE c_dropForeignKeys CURSOR for	SELECT constraint_name, parent_table_name
-        								            FROM #tableFKeys            
+        								            FROM #foreign_keys_to_moving_table            
             DECLARE @cons_name	    varchar(200),
         	    	@tbl_name	    varchar(200),
         	    	@drop_statement	nvarchar(600);
@@ -102,12 +102,6 @@ BEGIN
                                                     and     COL.column_id = IC.column_id
                                             WHERE   TAB."name" = @table
                                         );
-            
-
-            /* SELECT "name"
-                    FROM    sys.columns
-                    WHERE   object_id = FKC.referenced_object_id
-                    AND     sys.columns.column_id = FKC.referenced_column_id  */
 
             /***********************************/
             /*  Drop the Existing Primary Key  */
@@ -134,7 +128,7 @@ BEGIN
             /* Adding Foreign Keys again to the tables affected */
             /****************************************************/
             DECLARE c_restoreForeignKeys CURSOR for	SELECT  constraint_name, parent_table_name, parent_table_column_name, referenced_table_name, referenced_column_name
-        								            FROM    #tableFKeys            
+        								            FROM    #foreign_keys_to_moving_table            
             DECLARE @addCons_name	    varchar(200),
             		@addTbl_name	    varchar(200),
             		@cons_col	        varchar(200),
@@ -161,24 +155,18 @@ BEGIN
             /*********************************************/
             /*  Drop Temporary Table for Foreign Keys    */
             /*********************************************/
-            DROP TABLE #tableFKeys;
+            DROP TABLE #foreign_keys_to_moving_table;
 
             /* Checking Restorment of Keys */
             select *  
             from sys.foreign_keys            -- Sys Tabelle mit Foreign Keys         
             where "name" = @table;
 
-            COMMIT TRANSACTION ProzTransaction;
-        END TRY
-        BEGIN CATCH
-            ROLLBACK TRANSACTION ProzTransaction;
-            SET @errorMessage = CONCAT( 'The error with error number ', ERROR_NUMBER(), ' ocurred in Line ', ERROR_LINE(), '. Please note the following Message: ', ERROR_MESSAGE());
-            RAISERROR(@errorMessage, 16, 1);    
-        END CATCH;
-    
+        COMMIT TRANSACTION ProzTransaction;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION ProzTransaction;
+        SET @errorMessage = CONCAT( 'The error with error number ', ERROR_NUMBER(), ' ocurred in Line ', ERROR_LINE(), '. Please note the following Message: ', ERROR_MESSAGE());
+        RAISERROR(@errorMessage, 17, 1);    
+    END CATCH; 
 END
-
-
-
-
---COMMIT TRANSACTION ProzTransaction
