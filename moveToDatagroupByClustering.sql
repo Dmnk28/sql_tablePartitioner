@@ -1,4 +1,4 @@
-ALTER PROCEDURE partitionByClustering 
+ALTER PROCEDURE moveToDatagroupByClustering 
 @table          NVARCHAR(250)   =   null,
 @filegroup      NVARCHAR(250)   =   null,
 @columnstore    BINARY          =   NULL

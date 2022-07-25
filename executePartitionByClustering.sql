@@ -1,1 +1,1 @@
-EXECUTE partitionClusteredTable @table='Orders', @filegroup='UserData'
+EXECUTE partitionByClustering @table='Orders', @filegroup='UserData'
