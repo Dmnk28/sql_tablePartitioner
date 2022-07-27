@@ -1,6 +1,7 @@
 ALTER DATABASE NWOesterle 
 ADD FILEGROUP userData
 
+/* Modify for Filegroup */
 ALTER DATABASE NWOesterle 
 ADD FILE 
 (
@@ -19,13 +20,21 @@ ADD FILE
 )
 
 
+
 CREATE PARTITION FUNCTION partitionLeftByDate ( datetime )
 AS RANGE LEFT
-FOR VALUES ('2008-01-01 00:00:00.0', '2009-01-01 00:00:00.0', '2010-01-01 00:00:00.0', '2011-01-01 00:00:00.0')
+FOR VALUES ('2009-01-01 00:00:00.0')
 
+DROP PARTITION FUNCTION partitionLeftByDate;
+
+CREATE PARTITION FUNCTION partitionRightByDate ( datetime )
+AS RANGE RIGHT
+FOR VALUES ('2009-01-01 00:00:00.0')
+
+DROP PARTITION FUNCTION partitionRightByDate;
 
 CREATE PARTITION SCHEME partitionByDate
-AS PARTITION partitionLeftByDate
-TO ( userData )
+AS PARTITION partitionRightByDate
+ALL TO ( UserData )
 
 Select * from ORDERs
