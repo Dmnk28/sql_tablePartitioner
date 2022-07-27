@@ -1,7 +1,7 @@
-ALTER PROCEDURE moveToDatagroupByClustering 
+CREATE PROCEDURE moveToDatagroupByClustering 
 @table          NVARCHAR(250)   =   null,
 @filegroup      NVARCHAR(250)   =   null,
-@columnstore    BINARY          =   NULL
+@columnstore    BINARY          =   0
 AS
 BEGIN
     DECLARE @errorMessage NVARCHAR(500);
@@ -114,9 +114,21 @@ BEGIN
             /******************************************/
             /*  Let the Clustered Index do its Magic  */
             /******************************************/
-            SET @executableStatement =  CONCAT( 'CREATE CLUSTERED INDEX CIX_', @primaryKey_name, 
-                                                ' ON "', @table, '"(', @primaryKey_column, ')
-                                                 ON ', @filegroup   );
+            
+            IF @columnstore = 0
+                BEGIN
+                    SET @executableStatement =  CONCAT( 'CREATE CLUSTERED INDEX CIX_', @primaryKey_name, 
+                                                        ' ON "', @table, '"(', @primaryKey_column, ')
+                                                         ON ', @filegroup   );
+                END
+            ELSE
+                BEGIN
+                    SET @executableStatement =  CONCAT( 'CREATE CLUSTERED COLUMNSTORE INDEX CIX_COL_', @primaryKey_name, 
+                                                        ' ON "', @table, '"(', @primaryKey_column, ')
+                                                         ON ', @filegroup   );
+                END
+
+
             EXEC sp_executesql @executableStatement; 
             
             SET @executableStatement =  CONCAT( 'ALTER TABLE "', @table, '" 
