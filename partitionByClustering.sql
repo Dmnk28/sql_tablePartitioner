@@ -1,5 +1,7 @@
-ALTER PROCEDURE partitionByClustering 
+CREATE PROCEDURE partitionByClustering 
 @table          NVARCHAR(250)   =   null,
+@partFunc       NVARCHAR(250)   =   null,
+@colForPartFunc NVARCHAR(250)   =   null,
 @filegroup      NVARCHAR(250)   =   null,
 @columnstore    BINARY          =   NULL
 AS
@@ -107,16 +109,16 @@ BEGIN
             /*  Drop the Existing Primary Key  */
             /***********************************/
             SET @executableStatement =  CONCAT( 'ALTER TABLE ', @table,
-                                                ' DROP CONSTRAINT ',@primaryKey_name    );
+                                                ' DROP CONSTRAINT ', @primaryKey_name    );
             EXEC sp_executesql @executableStatement;
 
 
             /******************************************/
             /*  Let the Clustered Index do its Magic  */
             /******************************************/
-            SET @executableStatement =  CONCAT( 'CREATE CLUSTERED INDEX CIX_', @primaryKey_name, 
+            SET @executableStatement =  CONCAT( ' CREATE CLUSTERED INDEX CIX_Part_', @primaryKey_name, 
                                                 ' ON "', @table, '"(', @primaryKey_column, ')
-                                                 ON ', @filegroup   );
+                                                  ON ', @partFunc, '(', @colForPartFunc, ')');
             EXEC sp_executesql @executableStatement; 
             
             SET @executableStatement =  CONCAT( 'ALTER TABLE "', @table, '" 
