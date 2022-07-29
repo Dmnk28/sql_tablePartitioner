@@ -3,8 +3,7 @@ CREATE PROCEDURE partitionByClustering
 @partFunc       NVARCHAR(250)   =   null,
 @colForPartFunc NVARCHAR(250)   =   null,
 @filegroup      NVARCHAR(250)   =   null,
-@columnstore    BINARY          =   NULL,
-@xy             VARCHAR
+@columnstore    BINARY          =   NULL
 AS
 BEGIN
     DECLARE @errorMessage NVARCHAR(500);
